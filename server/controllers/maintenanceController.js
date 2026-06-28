@@ -1,4 +1,4 @@
-import prisma from '../prisma.js';
+import { AppDataSource } from '../database.js';
 
 // When report is created by Realtor
 export async function createMaintenanceReport(req, res) {
@@ -7,22 +7,23 @@ export async function createMaintenanceReport(req, res) {
         const {unitId, reporterId} = req.body;
         delete req.body.unitId;
         delete req.body.reporterId;
-        const newMaintenanceReport = await prisma.maintenanceRequest.create({
-            data: {
-                ...req.body,
-                realtor: {
-                    connect: {
-                        userId: userId
-                    }
-                },
-                unit: {
-                    ...(unitId) ? {connect: {id: unitId}} : {}
-                },
-                reporter: {
-                    ...(reporterId) ? {connect: {id: reporterId}} : {}
-                }
-            }
+        
+        const maintenanceRepo = AppDataSource.getRepository('MaintenanceRequest');
+        const realtorRepo = AppDataSource.getRepository('Realtor');
+        const realtor = await realtorRepo.findOne({ where: { userId } });
+        
+        if (!realtor) {
+            return res.status(400).json({ message: "Realtor not found" });
+        }
+
+        const newMaintenanceReport = maintenanceRepo.create({
+            ...req.body,
+            realtorId: realtor.id,
+            unitId: unitId || null,
+            reporterId: reporterId || null
         });
+
+        await maintenanceRepo.save(newMaintenanceReport);
 
         res.status(200).json({data: newMaintenanceReport });
     }
@@ -35,13 +36,14 @@ export async function createMaintenanceReport(req, res) {
 export async function deleteMaintenanceReport(req, res) {
     try {
         const { id } = req.params;
-        const deletedReport = await prisma.maintenanceRequest.delete({
-            where: {
-                id: parseInt(id)
-            }
-        }); 
+        const maintenanceRepo = AppDataSource.getRepository('MaintenanceRequest');
+        const report = await maintenanceRepo.findOne({ where: { id: parseInt(id) } });
+        
+        if (report) {
+            await maintenanceRepo.delete(parseInt(id));
+        }
 
-        res.status(200).json({data: deletedReport });
+        res.status(200).json({data: report });
     }
     catch (e) {
         console.log(e)
@@ -52,23 +54,14 @@ export async function deleteMaintenanceReport(req, res) {
 export async function getMaintenanceReports(req, res) {
     try {
         const userId = req.user.userId;
-
-        const maintenanceReports = await prisma.maintenanceRequest.findMany({
-            where: {
-                OR: [
-                    {
-                        realtor: {
-                            userId: userId
-                        }
-                    },
-                    {
-                        reporter: {
-                            userId: userId
-                        }
-                    }
-                ]
-            }
-        })
+        const maintenanceRepo = AppDataSource.getRepository('MaintenanceRequest');
+        
+        const maintenanceReports = await maintenanceRepo.createQueryBuilder('maintenance')
+            .leftJoin('maintenance.realtor', 'realtor')
+            .leftJoin('maintenance.reporter', 'reporter')
+            .where('realtor.userId = :userId', { userId })
+            .orWhere('reporter.userId = :userId', { userId })
+            .getMany();
 
         res.status(200).json({data: maintenanceReports });
     }

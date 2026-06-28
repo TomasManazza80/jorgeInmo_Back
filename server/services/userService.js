@@ -1,44 +1,20 @@
-import prisma from '../prisma.js';
+import { AppDataSource } from '../database.js';
 import bcrypt from 'bcryptjs';
 
+function getUserRepo() {
+    return AppDataSource.getRepository('User');
+}
+
 export async function getAllUsers() {
-    return prisma.user.findMany({
-        select: {
-            id: true,
-            email: true,
-            firstName: true,
-            lastName: true,
-            name: true,
-            role: true,
-            status: true,
-            civilStatus: true,
-            occupation: true,
-            income: true,
-            creditScore: true,
-            createdAt: true,
-            updatedAt: true,
-        }
+    return getUserRepo().find({
+        select: { id: true, email: true, firstName: true, lastName: true, name: true, role: true, status: true, civilStatus: true, occupation: true, income: true, creditScore: true, createdAt: true, updatedAt: true }
     });
 }
 
 export async function getUserById(id) {
-    return prisma.user.findUnique({
+    return getUserRepo().findOne({
         where: { id },
-        select: {
-            id: true,
-            email: true,
-            firstName: true,
-            lastName: true,
-            name: true,
-            role: true,
-            status: true,
-            civilStatus: true,
-            occupation: true,
-            income: true,
-            creditScore: true,
-            createdAt: true,
-            updatedAt: true,
-        }
+        select: { id: true, email: true, firstName: true, lastName: true, name: true, role: true, status: true, civilStatus: true, occupation: true, income: true, creditScore: true, createdAt: true, updatedAt: true }
     });
 }
 
@@ -48,7 +24,9 @@ export async function createUser(userData) {
     const hashedPassword = await bcrypt.hash(password, salt);
     const name = firstName + ' ' + (lastName || '');
 
-    const data = {
+    const userRepo = getUserRepo();
+
+    let newUser = userRepo.create({
         email,
         password: hashedPassword,
         firstName,
@@ -60,68 +38,54 @@ export async function createUser(userData) {
         occupation,
         income: income ? parseFloat(income) : null,
         creditScore: creditScore ? parseInt(creditScore) : null
-    };
+    });
 
-    if (role === 'REALTOR') {
-        data.realtor = { create: {} };
-    } else if (role === 'TENANT') {
-        data.tenant = { create: {} };
-    }
-
-    return prisma.user.create({
-        data,
-        select: {
-            id: true,
-            email: true,
-            name: true,
-            role: true,
-            civilStatus: true,
-            occupation: true,
-            income: true,
-            creditScore: true,
+    await AppDataSource.transaction(async (transactionalEntityManager) => {
+        newUser = await transactionalEntityManager.save('User', newUser);
+        
+        if (role === 'REALTOR') {
+            const realtor = transactionalEntityManager.create('Realtor', { userId: newUser.id });
+            await transactionalEntityManager.save('Realtor', realtor);
+        } else if (role === 'TENANT') {
+            const tenant = transactionalEntityManager.create('Tenant', { userId: newUser.id, email: newUser.email, firstName: newUser.firstName, lastName: newUser.lastName });
+            await transactionalEntityManager.save('Tenant', tenant);
         }
     });
+
+    return {
+        id: newUser.id,
+        email: newUser.email,
+        name: newUser.name,
+        role: newUser.role,
+        civilStatus: newUser.civilStatus,
+        occupation: newUser.occupation,
+        income: newUser.income,
+        creditScore: newUser.creditScore
+    };
 }
 
 export async function updateUserRole(id, role) {
-    return prisma.user.update({
+    await getUserRepo().update(id, { role });
+    return getUserRepo().findOne({
         where: { id },
-        data: { role },
-        select: {
-            id: true,
-            email: true,
-            role: true,
-        }
+        select: { id: true, email: true, role: true }
     });
 }
 
 export async function updateUser(id, updateData) {
-    // Exclude sensitive fields from being updated directly here if needed
     delete updateData.password;
     delete updateData.salt;
-    delete updateData.role; // Role should be updated via updateUserRole
+    delete updateData.role;
     delete updateData.id;
     
-    return prisma.user.update({
+    await getUserRepo().update(id, updateData);
+    
+    return getUserRepo().findOne({
         where: { id },
-        data: updateData,
-        select: {
-            id: true,
-            email: true,
-            firstName: true,
-            lastName: true,
-            name: true,
-            role: true,
-            civilStatus: true,
-            occupation: true,
-            income: true,
-            creditScore: true,
-        }
+        select: { id: true, email: true, firstName: true, lastName: true, name: true, role: true, civilStatus: true, occupation: true, income: true, creditScore: true }
     });
 }
 
 export async function deleteUser(id) {
-    return prisma.user.delete({
-        where: { id },
-    });
+    return getUserRepo().delete(id);
 }

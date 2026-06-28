@@ -1,29 +1,23 @@
-import prisma from '../prisma.js';
+import { AppDataSource } from '../database.js';
 
 export async function createMessage(message) {
     try {
-        const newMessage = await prisma.message.create({
-            data: {
-                type: message.type,
-                content: message.content,
-                sender: {
-                    connect: {
-                        id: message.senderId,
-                    }
-                },
-                receiver: {
-                    connect: {
-                        id: message.receiverId,
-                    }
-                }
-            },
-            include: {
-                sender: true,
-                receiver: true,
-            }
+        const messageRepo = AppDataSource.getRepository('Message');
+        const newMessage = messageRepo.create({
+            type: message.type,
+            content: message.content,
+            senderId: message.senderId,
+            receiverId: message.receiverId
+        });
+        
+        await messageRepo.save(newMessage);
+        
+        const messageWithRelations = await messageRepo.findOne({
+            where: { id: newMessage.id },
+            relations: { sender: true, receiver: true }
         });
 
-        return newMessage;
+        return messageWithRelations;
     }
     catch (error) {
         console.log(error)
@@ -67,23 +61,13 @@ export async function createMessage(req, res) {
 
 export async function getMessages(req, res) {
     try {
-        const messages = await prisma.message.findMany({
-            where: {
-                OR: [
-                    {
-                        senderId: req.user.userId,
-                    },
-                    {
-                        receiverId: req.user.userId,
-                    }
-                ]
-            },
-            include: {
-                sender: true,
-                receiver: true,
-            }
-
-        });
+        const messageRepo = AppDataSource.getRepository('Message');
+        const messages = await messageRepo.createQueryBuilder('message')
+            .leftJoinAndSelect('message.sender', 'sender')
+            .leftJoinAndSelect('message.receiver', 'receiver')
+            .where('message.senderId = :userId', { userId: req.user.userId })
+            .orWhere('message.receiverId = :userId', { userId: req.user.userId })
+            .getMany();
 
         res.status(200).json({data: messages });
 

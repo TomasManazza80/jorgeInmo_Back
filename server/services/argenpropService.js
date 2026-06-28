@@ -1,86 +1,93 @@
 import axios from 'axios';
+import { AppDataSource } from '../database.js';
 
-// URL base de la API de Argenprop (usando la de testing/staging como placeholder)
-// Reemplazar con la URL final de producción cuando se obtengan credenciales
-const ARGENPROP_API_URL = process.env.ARGENPROP_API_URL || 'https://api.argenprop.com/v1';
+// Diccionario de mapeo según requerimientos estrictos de la API de Argenprop
+const ARGENPROP_MAPPING = {
+  operationType: { 'Venta': 1, 'Alquiler': 2, 'Alquiler Temporario': 3 },
+  propertyType: { 'Departamento': 1, 'Casa': 2, 'Ph': 3, 'Terreno': 4 },
+  currency: { 'ARS': 1, 'USD': 2 }
+};
 
 /**
- * Publicar o actualizar propiedad en Argenprop
- * @param {Object} property Datos de la propiedad local
+ * Valida si la propiedad cuenta con los campos obligatorios para Argenprop
  */
-export async function uploadToArgenprop(property) {
-    try {
-        console.log(`[Argenprop API] Iniciando sincronización de propiedad ID: ${property.id}...`);
-
-        // Datos requeridos típicamente por Argenprop
-        const payload = {
-            idOrigen: property.id.toString(),
-            titulo: property.title || 'Sin Título',
-            descripcion: property.description || '',
-            precio: property.marketPrice || 0,
-            moneda: property.currency || 'USD',
-            // Coordenadas y dirección (Crucial para Argenprop)
-            ubicacion: {
-                calle: property.street || '',
-                altura: property.streetNumber || 'S/N', // Requieren altura
-                latitud: property.latitude || 0,
-                longitud: property.longitude || 0,
-                localidad: property.city || '',
-                provincia: property.state || ''
-            },
-            superficieCubierta: property.units?.[0]?.unitSize || 0,
-            superficieTotal: property.lotSize || 0,
-            habitaciones: property.units?.[0]?.numOfBedrooms || 0,
-            banos: property.units?.[0]?.numOfBathrooms || 0,
-            cocheras: property.units?.[0]?.garages || 0,
-            // Imágenes
-            imagenes: property.images?.map(img => img.imageUrl) || []
-        };
-
-        console.log(`[Argenprop API] Payload preparado:`, JSON.stringify(payload, null, 2));
-
-        // Descomentar y ajustar cuando se tengan credenciales reales
-        /*
-        const response = await axios.post(`${ARGENPROP_API_URL}/avisos`, payload, {
-            headers: {
-                'Authorization': `Bearer ${process.env.ARGENPROP_TOKEN}`,
-                'X-Vendedor-Id': process.env.ARGENPROP_VENDEDOR_ID,
-                'Content-Type': 'application/json'
-            }
-        });
-        console.log(`[Argenprop API] Éxito:`, response.data);
-        return response.data;
-        */
-       
-        console.log(`[Argenprop API] SIMULACIÓN EXITOSA. La propiedad ${property.id} fue (teóricamente) enviada.`);
-        return { status: 'mock_success' };
-    } catch (error) {
-        console.error(`[Argenprop API] Error publicando propiedad:`, error.response?.data || error.message);
-        // Aquí se podría implementar una lógica de reintentos o colas (ej. BullMQ)
-        throw error;
-    }
+function validateForArgenprop(property) {
+  const errors = [];
+  if (!property.latitude || !property.longitude) errors.push("Coordenadas GPS (latitud/longitud) obligatorias.");
+  if (!property.surfaceTotal) errors.push("La superficie total es obligatoria para Argenprop.");
+  if (!ARGENPROP_MAPPING.operationType[property.operationType]) errors.push(`Tipo de operación inválido: ${property.operationType}`);
+  if (!ARGENPROP_MAPPING.propertyType[property.propertyType]) errors.push(`Tipo de propiedad inválida: ${property.propertyType}`);
+  
+  if (errors.length > 0) {
+    throw new Error(`Validación Argenprop Fallida: ${errors.join(' | ')}`);
+  }
 }
 
 /**
- * Dar de baja propiedad en Argenprop
- * @param {string|number} propertyId ID de la propiedad local
+ * Mapea el objeto interno al payload estructurado de Argenprop
  */
-export async function deleteFromArgenprop(propertyId) {
-    try {
-        console.log(`[Argenprop API] Eliminando propiedad ID: ${propertyId}...`);
-        
-        /*
-        await axios.delete(`${ARGENPROP_API_URL}/avisos/${propertyId}`, {
-             headers: {
-                'Authorization': `Bearer ${process.env.ARGENPROP_TOKEN}`,
-                'X-Vendedor-Id': process.env.ARGENPROP_VENDEDOR_ID
-            }
-        });
-        */
-       
-        console.log(`[Argenprop API] SIMULACIÓN EXITOSA. Propiedad dada de baja.`);
-        return { status: 'mock_deleted' };
-    } catch (error) {
-         console.error(`[Argenprop API] Error eliminando propiedad:`, error.response?.data || error.message);
+function mapToArgenpropPayload(property) {
+  return {
+    id_aviso_externo: property.id.toString(),
+    tipo_operacion: ARGENPROP_MAPPING.operationType[property.operationType],
+    tipo_inmueble: ARGENPROP_MAPPING.propertyType[property.propertyType],
+    precio: property.price || property.marketPrice,
+    moneda: ARGENPROP_MAPPING.currency[property.currency],
+    descripcion: property.description,
+    titulo: property.title,
+    coordenadas: {
+      lat: property.latitude,
+      lon: property.longitude
+    },
+    caracteristicas: {
+      superficie_total: property.surfaceTotal,
+      superficie_cubierta: property.surfaceCovered,
+      cantidad_ambientes: property.rooms,
+      cantidad_banos: property.bathrooms
     }
+  };
+}
+
+export async function uploadToArgenprop(propertyId) {
+  const propertyRepo = AppDataSource.getRepository('RealEstateObject');
+  const property = await propertyRepo.findOne({ where: { id: propertyId } });
+  if (!property || !property.argenprop_enabled) return;
+
+  try {
+    // 1. Validación Estricta Preventiva
+    validateForArgenprop(property);
+
+    // 2. Aplicación de la capa de Mapeo
+    const payload = mapToArgenpropPayload(property);
+
+    // 3. Envío y captura de respuesta
+    const response = await axios.post('https://api.argenprop.com/v1/avisos', payload, {
+      headers: { 'Authorization': `Bearer ${process.env.ARGENPROP_API_KEY}` }
+    });
+
+    if (response.data && response.data.id_aviso_argenprop) {
+      // 4. Guardar id de aviso devuelto por el portal
+      await propertyRepo.update(propertyId, { argenprop_id: response.data.id_aviso_argenprop.toString() });
+    }
+  } catch (error) {
+    console.error(`Error en integración Argenprop para ID ${propertyId}:`, error.message);
+    throw error;
+  }
+}
+
+export async function deleteFromArgenprop(propertyId) {
+  try {
+      console.log(`[Argenprop API] Eliminando propiedad ID: ${propertyId}...`);
+      
+      await axios.delete(`https://api.argenprop.com/v1/avisos/${propertyId}`, {
+            headers: {
+              'Authorization': `Bearer ${process.env.ARGENPROP_API_KEY}`
+          }
+      });
+      
+      console.log(`[Argenprop API] ÉXITO. Propiedad dada de baja.`);
+      return { status: 'deleted' };
+  } catch (error) {
+        console.error(`[Argenprop API] Error eliminando propiedad:`, error.response?.data || error.message);
+  }
 }

@@ -1,20 +1,16 @@
-import prisma from '../prisma.js';
+import { AppDataSource } from '../database.js';
 import {createLeaseWithPaymentSchedule} from "../services/leaseService.js";
 import bcrypt from 'bcryptjs';
 
-
-// Creates a tenant, if provided link them to a lease, otherwise create new lease using lease data in body
 export async function createTenant(req, res) {
     const {leaseId} = req.query;
     const tenantData = {...req.body};
     const unitId = tenantData.unitId;
-    // Remove Lease data from tenantdata
     delete tenantData.lease;
     delete tenantData.unitId;
 
     const { email, firstName, lastName, phone, civilStatus, occupation, income, creditScore } = tenantData;
     
-    // Remove User data from tenantData so Prisma doesn't crash on Tenant creation
     delete tenantData.civilStatus;
     delete tenantData.occupation;
     delete tenantData.income;
@@ -25,73 +21,72 @@ export async function createTenant(req, res) {
     let user = null;
 
     try {
+        const userRepo = AppDataSource.getRepository('User');
+        const tenantRepo = AppDataSource.getRepository('Tenant');
+        const unitRepo = AppDataSource.getRepository('Unit');
+
         if (email) {
-            user = await prisma.user.findUnique({ where: { email } });
+            user = await userRepo.findOne({ where: { email } });
             if (!user) {
                 const salt = await bcrypt.genSalt(12);
                 const hashedPassword = await bcrypt.hash(Math.random().toString(36).slice(-8), salt);
-                user = await prisma.user.create({
-                    data: {
-                        email,
-                        firstName,
-                        lastName,
-                        name: `${firstName} ${lastName}`,
-                        phone,
-                        password: hashedPassword,
-                        salt,
-                        role: 'TENANT',
-                        civilStatus,
-                        occupation,
-                        income: income ? parseFloat(income) : null,
-                        creditScore: creditScore ? parseInt(creditScore) : null
-                    }
+                
+                user = userRepo.create({
+                    email,
+                    firstName,
+                    lastName,
+                    name: `${firstName} ${lastName}`,
+                    phone,
+                    password: hashedPassword,
+                    salt,
+                    role: 'TENANT',
+                    civilStatus,
+                    occupation,
+                    income: income ? parseFloat(income) : null,
+                    creditScore: creditScore ? parseInt(creditScore) : null
                 });
+                await userRepo.save(user);
             } else {
-                user = await prisma.user.update({
-                    where: { email },
-                    data: {
-                        firstName: firstName || undefined,
-                        lastName: lastName || undefined,
-                        phone: phone || undefined,
-                        civilStatus: civilStatus || undefined,
-                        occupation: occupation || undefined,
-                        income: income ? parseFloat(income) : undefined,
-                        creditScore: creditScore ? parseInt(creditScore) : undefined
-                    }
+                await userRepo.update({ email }, {
+                    firstName: firstName || undefined,
+                    lastName: lastName || undefined,
+                    phone: phone || undefined,
+                    civilStatus: civilStatus || undefined,
+                    occupation: occupation || undefined,
+                    income: income ? parseFloat(income) : undefined,
+                    creditScore: creditScore ? parseInt(creditScore) : undefined
                 });
+                user = await userRepo.findOne({ where: { email } });
             }
             tenantData.userId = user.id;
         }
 
-        newTenant = await prisma.tenant.create({
-            data: {
-                ...tenantData,
-                leases: {
-                    ...(leaseId ?
-                            {connect: {id: parseInt(leaseId)}} : null
+        newTenant = tenantRepo.create({
+            ...tenantData
+        });
+        await tenantRepo.save(newTenant);
 
-                    )
-                },
-                unit: {
-                    ...(unitId ?
-                            {connect: {id: parseInt(unitId)}} : null
-
-                    )
-                },
-            },
-            include: {
-                leases: true,
-                unit: true
-            }
+        if (unitId) {
+            await unitRepo.update(parseInt(unitId), { tenantId: newTenant.id });
+        }
+        
+        if (leaseId) {
+            const leaseRepo = AppDataSource.getRepository('Lease');
+            await leaseRepo.update(parseInt(leaseId), { tenantId: newTenant.id });
+        }
+        
+        newTenant = await tenantRepo.findOne({
+            where: { id: newTenant.id },
+            relations: { leases: true, units: true }
         });
     }
     catch (error) {
         console.log(error)
         res.status(500).json({ message: "Error creating tenant" });
+        return;
     }
 
     try {
-
         if (!leaseId && req.body?.lease) {
             const leaseBody = req.body?.lease;
             leaseBody.tenantId = newTenant?.id;
@@ -101,35 +96,26 @@ export async function createTenant(req, res) {
     catch (error) {
         console.log(error)
         res.status(500).json({ message: "Error creating lease" });
+        return;
     }
 
     res.status(200).json({data: {
             ...newTenant,
-            leases: [lease]
+            leases: [lease].filter(Boolean)
         } });
 
 }
 
 export async function getTenants(req, res) {
     try {
-        const tenants = await prisma.tenant.findMany({
-            where: {
-                leases: {
-                    some: {
-                        realtor: {
-                            userId: req.user.userId
-                        }
-                    }
-                }
-            },
-            orderBy: {
-                createdAt: "desc"
-            },
-            include: {
-                leases: true,
-                unit: true
-            }
-        });
+        const tenantRepo = AppDataSource.getRepository('Tenant');
+        const tenants = await tenantRepo.createQueryBuilder('tenant')
+            .leftJoinAndSelect('tenant.leases', 'lease')
+            .leftJoinAndSelect('tenant.units', 'unit')
+            .leftJoin('lease.realtor', 'realtor')
+            .where('realtor.userId = :userId', { userId: req.user.userId })
+            .orderBy('tenant.createdAt', 'DESC')
+            .getMany();
 
         res.status(200).json({data: tenants });
     }
@@ -140,24 +126,16 @@ export async function getTenants(req, res) {
 
 export async function getTenant(req, res) {
     try {
-        const tenant = await prisma.tenant.findUnique({
-            where: {
-                id: parseInt(req.params.id),
-                leases: {
-                    some: {
-                        realtor: {
-                            userId: req.user.userId
-                        }
-                    }
-                }
-            },
-            include: {
-                leases: true,
-                unit: true,
-                maintenanceRequests: true,
-                rentPayments: true
-            }
-        });
+        const tenantRepo = AppDataSource.getRepository('Tenant');
+        const tenant = await tenantRepo.createQueryBuilder('tenant')
+            .leftJoinAndSelect('tenant.leases', 'lease')
+            .leftJoinAndSelect('tenant.units', 'unit')
+            .leftJoinAndSelect('tenant.maintenanceRequests', 'maintenanceRequests')
+            .leftJoinAndSelect('tenant.rentPayments', 'rentPayments')
+            .leftJoin('lease.realtor', 'realtor')
+            .where('tenant.id = :id', { id: parseInt(req.params.id) })
+            .andWhere('realtor.userId = :userId', { userId: req.user.userId })
+            .getOne();
 
         if (!tenant) {
             return res.status(404).json({ message: "Tenant not found" });
@@ -172,13 +150,12 @@ export async function getTenant(req, res) {
 
 export async function deleteTenant(req, res) {
     try {
-        const tenant = await prisma.tenant.findUnique({
-            where: {
-                id: parseInt(req.params.id),
-            },
-            include: {
-                leases: true
-            }
+        const tenantRepo = AppDataSource.getRepository('Tenant');
+        const leaseRepo = AppDataSource.getRepository('Lease');
+        
+        const tenant = await tenantRepo.findOne({
+            where: { id: parseInt(req.params.id) },
+            relations: { leases: true }
         });
 
         if (!tenant) {
@@ -187,29 +164,13 @@ export async function deleteTenant(req, res) {
 
         // Disconnect the tenant from each lease
         for (const lease of tenant.leases) {
-            await prisma.lease.update({
-                where: {
-                    id: lease.id
-                },
-
-                data: {
-                    tenant: {
-                        disconnect: {
-                            id: tenant.id
-                        }
-                    }
-                }
-            });
+            await leaseRepo.update(lease.id, { tenantId: null });
         }
 
         // Delete the tenant
-        const deletedTenant = await prisma.tenant.delete({
-            where: {
-                id: tenant.id
-            }
-        });
+        await tenantRepo.delete(tenant.id);
 
-        res.status(200).json({data: deletedTenant });
+        res.status(200).json({data: tenant });
     }
     catch (error) {
         console.log(error)
@@ -217,8 +178,6 @@ export async function deleteTenant(req, res) {
     }
 }
 
-// Allows realtors to update tenants, but only if the tenant is linked to a lease that the realtor owns.
-// If the tenant has created an account of their own, they can update their own tenant data using the same endpoint
 export async function updateTenant(req, res) {
     const tenantData = {...req.body};
     const { email, firstName, lastName, phone, civilStatus, occupation, income, creditScore } = tenantData;
@@ -229,43 +188,30 @@ export async function updateTenant(req, res) {
     delete tenantData.creditScore;
 
     try {
-        const tenantToUpdate = await prisma.tenant.findUnique({
+        const tenantRepo = AppDataSource.getRepository('Tenant');
+        const userRepo = AppDataSource.getRepository('User');
+        
+        const tenantToUpdate = await tenantRepo.findOne({
             where: { id: parseInt(req.params.id) }
         });
 
         if (tenantToUpdate && tenantToUpdate.userId) {
-            await prisma.user.update({
-                where: { id: tenantToUpdate.userId },
-                data: {
-                    firstName: firstName || undefined,
-                    lastName: lastName || undefined,
-                    phone: phone || undefined,
-                    civilStatus: civilStatus || undefined,
-                    occupation: occupation || undefined,
-                    income: income ? parseFloat(income) : undefined,
-                    creditScore: creditScore ? parseInt(creditScore) : undefined
-                }
+            await userRepo.update(tenantToUpdate.userId, {
+                firstName: firstName || undefined,
+                lastName: lastName || undefined,
+                phone: phone || undefined,
+                civilStatus: civilStatus || undefined,
+                occupation: occupation || undefined,
+                income: income ? parseFloat(income) : undefined,
+                creditScore: creditScore ? parseInt(creditScore) : undefined
             });
         }
 
-        const updatedTenant = await prisma.tenant.update({
-            where: {
-                id: parseInt(req.params.id),
-                leases: {
-                    some: {
-                        realtor: {
-                            userId: req.user.userId
-                        }
-                    }
-                }
-
-            },
-            data: {
-                ...tenantData,
-            },
-            include: {
-                leases: true
-            }
+        await tenantRepo.update(parseInt(req.params.id), tenantData);
+        
+        const updatedTenant = await tenantRepo.findOne({
+            where: { id: parseInt(req.params.id) },
+            relations: { leases: true }
         });
 
         res.status(200).json({data: updatedTenant });
@@ -281,47 +227,20 @@ export async function assignTenantToUnit(req, res) {
     const tenantId = req.body.tenantId;
 
     try {
-        // If tenantId null, disconnect tenant from unit
+        const unitRepo = AppDataSource.getRepository('Unit');
+        const tenantRepo = AppDataSource.getRepository('Tenant');
+        
         if (!tenantId) {
-            const unit = await prisma.unit.update({
-                where: {
-                    id: parseInt(unitId)
-                },
-                data: {
-                    tenant: {
-                        disconnect: true
-                    }
-                },
-                include: {
-                    tenant: true
-                }
-            });
-
+            await unitRepo.update(parseInt(unitId), { tenantId: null });
+            const unit = await unitRepo.findOne({ where: { id: parseInt(unitId) }, relations: { tenant: true } });
             return res.status(200).json({data: unit });
         }
 
-        const updatedTenant = await prisma.tenant.update({
-            where: {
-                id: parseInt(tenantId),
-                leases: {
-                    some: {
-                        realtor: {
-                            userId: req.user.userId
-                        }
-                    }
-                }
-            },
-            data: {
-                unit: {
-                    connect: {
-                        id: parseInt(unitId)
-                    }
-                }
-            },
-            include: {
-                leases: true,
-                unit: true
-            }
+        await unitRepo.update(parseInt(unitId), { tenantId: parseInt(tenantId) });
+
+        const updatedTenant = await tenantRepo.findOne({
+            where: { id: parseInt(tenantId) },
+            relations: { leases: true, units: true }
         });
 
         res.status(200).json({data: updatedTenant });

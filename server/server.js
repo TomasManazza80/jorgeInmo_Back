@@ -21,6 +21,8 @@ import feedRoutes from "./routes/feedRoutes.js";
 import publicRoutes from "./routes/publicRoutes.js";
 import settingsRoutes from "./routes/settingsRoutes.js";
 import uploadRoutes from "./routes/uploadRoutes.js";
+import webhookRoutes from "./routes/webhookRoutes.js";
+import gvamaxRoutes from "./routes/gvamaxRoutes.js";
 import { requireRoles } from "./util/roleMiddleware.js";
 
 // eslint-disable-next-line no-undef
@@ -31,6 +33,9 @@ const router = express.Router();
 app.use(cors({ origin: process.env.NODE_ENV === 'production' ? process.env.VITE_PUBLIC_URL : ['http://localhost:5173', process.env.VITE_PUBLIC_URL], credentials: true }));
 app.use(express.json());
 app.use(router);
+
+// Servir archivos estáticos de subidas
+app.use('/uploads', express.static('public/uploads'));
 
 app.get('/', (req, res) => {
     res.send('Hello World!');
@@ -48,6 +53,12 @@ app.use('/api/settings', settingsRoutes);
 // Upload API
 app.use('/api/upload', uploadRoutes);
 
+// Webhooks
+app.use('/api/webhooks', webhookRoutes);
+
+// GVAmax API Integration
+app.use('/api/gvamax', gvamaxRoutes);
+
 // Auth
 router.post('/signup', authController.registerUser);
 router.post('/login', authController.login);
@@ -59,9 +70,11 @@ router.patch('/user', authenticateToken, userController.updateUser)
 router.delete('/user', authenticateToken, userController.deleteUser)
 
 // Admin User Management
-router.get('/admin/users', authenticateToken, requireRoles(['ADMIN']), userController.getAllUsers)
-router.post('/admin/users', authenticateToken, requireRoles(['ADMIN']), userController.adminCreateUser)
-router.patch('/admin/users/:id/role', authenticateToken, requireRoles(['ADMIN']), userController.updateUserRole)
+router.get('/admin/users', authenticateToken, requireRoles(['ADMIN', 'REALTOR', 'USER']), userController.getAllUsers)
+router.post('/admin/users', authenticateToken, requireRoles(['ADMIN', 'REALTOR', 'USER']), userController.adminCreateUser)
+router.patch('/admin/users/:id', authenticateToken, requireRoles(['ADMIN', 'REALTOR', 'USER']), userController.adminUpdateUser)
+router.delete('/admin/users/:id', authenticateToken, requireRoles(['ADMIN', 'REALTOR', 'USER']), userController.adminDeleteUser)
+router.patch('/admin/users/:id/role', authenticateToken, requireRoles(['ADMIN', 'REALTOR', 'USER']), userController.updateUserRole)
 
 // Messages
 router.get('/messages', authenticateToken, messageController.getMessages)
@@ -76,6 +89,7 @@ router.get('/properties', authenticateToken, realEstateController.getProperties)
 router.post('/properties', authenticateToken, realEstateController.createProperty)
 router.get('/properties/:id', authenticateToken, realEstateController.getProperty)
 router.delete('/properties/:id', authenticateToken, realEstateController.deleteProperty)
+router.post('/properties/:id/upload-3d', authenticateToken, realEstateController.upload3dModel)
 
 // Units / Rentals
 router.get('/units', authenticateToken, realEstateController.getUnits)
@@ -194,8 +208,16 @@ io.on('connection', (socket) => {
     });
 });
 
-server.listen(PORT, () => {
-    console.log('App listening on port ' + PORT);
-})
+import { AppDataSource } from './database.js';
 
+AppDataSource.initialize()
+    .then(() => {
+        console.log("TypeORM Data Source has been initialized!");
+        server.listen(PORT, () => {
+            console.log('App listening on port ' + PORT);
+        });
+    })
+    .catch((err) => {
+        console.error("Error during Data Source initialization:", err);
+    });
 

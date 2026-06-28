@@ -1,5 +1,4 @@
-import prisma from '../prisma.js';
-
+import { AppDataSource } from '../database.js';
 
 export async function createExpense(req, res) {
     try {
@@ -9,30 +8,29 @@ export async function createExpense(req, res) {
         delete req.body.leaseId;
         delete req.body.maintenanceRequestId;
 
-        // Make sure that the Unit, Lease and MaintenanceRequest (if provided) belong to user/realtor
+        const unitRepo = AppDataSource.getRepository('Unit');
+        const leaseRepo = AppDataSource.getRepository('Lease');
+        const maintenanceRepo = AppDataSource.getRepository('MaintenanceRequest');
+        const realtorRepo = AppDataSource.getRepository('Realtor');
+        const expenseRepo = AppDataSource.getRepository('Expense');
+
+        const realtor = await realtorRepo.findOne({ where: { userId } });
+        if (!realtor) return res.status(400).json({ message: "Realtor not found" });
+
         if (unitId) {
-            const unit = await prisma.unit.findFirst({
-                where: {
-                    id: unitId,
-                    realEstateObject: {
-                        realtor: {
-                            userId: req.user.userId
-                        }
-                    },
-                }
-            });
+            const unit = await unitRepo.createQueryBuilder('unit')
+                .leftJoin('unit.realEstateObject', 'realEstateObject')
+                .leftJoin('realEstateObject.realtor', 'realtor')
+                .where('unit.id = :id', { id: unitId })
+                .andWhere('realtor.userId = :userId', { userId })
+                .getOne();
             if (!unit) {
                 return res.status(400).json({ message: "Unit not found" });
             }
         }
         if (leaseId) {
-            const lease = await prisma.lease.findFirst({
-                where: {
-                    id: leaseId,
-                    realtor: {
-                        userId: req.user.userId
-                    }
-                }
+            const lease = await leaseRepo.findOne({
+                where: { id: leaseId, realtorId: realtor.id }
             });
             if (!lease) {
                 return res.status(400).json({ message: "Lease not found" });
@@ -40,38 +38,23 @@ export async function createExpense(req, res) {
         }
 
         if (maintenanceRequestId) {
-            const maintenanceRequest = await prisma.maintenanceRequest.findFirst({
-                where: {
-                    id: maintenanceRequestId,
-                    realtor: {
-                        userId: req.user.userId
-                    }
-                }
+            const maintenanceRequest = await maintenanceRepo.findOne({
+                where: { id: maintenanceRequestId, realtorId: realtor.id }
             });
             if (!maintenanceRequest) {
                 return res.status(400).json({ message: "Maintenance request not found" });
             }
         }
 
-        const newExpense = await prisma.expense.create({
-            data: {
-                ...req.body,
-                realtor: {
-                    connect: {
-                        userId: userId
-                    }
-                },
-                unit: {
-                    ...(unitId) ? {connect: {id: unitId}} : {}
-                },
-                lease: {
-                    ...(leaseId) ? {connect: {id: leaseId}} : {}
-                },
-                maintenanceRequest: {
-                    ...(maintenanceRequestId) ? {connect: {id: maintenanceRequestId}} : {}
-                }
-            }
+        const newExpense = expenseRepo.create({
+            ...req.body,
+            realtorId: realtor.id,
+            unitId: unitId || null,
+            leaseId: leaseId || null,
+            maintenanceRequestId: maintenanceRequestId || null
         });
+
+        await expenseRepo.save(newExpense);
 
         res.status(200).json({data: newExpense });
     }
@@ -85,13 +68,11 @@ export async function createExpense(req, res) {
 export async function getExpenses(req, res){
     try {
         const userId = req.user.userId;
-        const expenses = await prisma.expense.findMany({
-            where: {
-                realtor: {
-                    userId: userId
-                }
-            }
-        })
+        const expenseRepo = AppDataSource.getRepository('Expense');
+        const expenses = await expenseRepo.createQueryBuilder('expense')
+            .leftJoin('expense.realtor', 'realtor')
+            .where('realtor.userId = :userId', { userId })
+            .getMany();
 
         res.status(200).json({data: expenses });
     }
@@ -102,26 +83,21 @@ export async function getExpenses(req, res){
 
 export async function deleteExpense(req, res){
     try {
-        const userId = Number(req.user.userId);
+        const userId = req.user.userId;
         const expenseId = Number(req.params.id);
-        const expense = await prisma.expense.findFirst({
-            where: {
-                id: expenseId,
-                realtor: {
-                    userId: userId
-                }
-            }
-        });
+        
+        const expenseRepo = AppDataSource.getRepository('Expense');
+        const expense = await expenseRepo.createQueryBuilder('expense')
+            .leftJoin('expense.realtor', 'realtor')
+            .where('expense.id = :id', { id: expenseId })
+            .andWhere('realtor.userId = :userId', { userId })
+            .getOne();
 
         if (!expense) {
             return res.status(400).json({ message: "Expense not found" });
         }
 
-        await prisma.expense.delete({
-            where: {
-                id: expenseId
-            }
-        });
+        await expenseRepo.delete(expenseId);
 
         res.status(200).json({data: expense });
     }

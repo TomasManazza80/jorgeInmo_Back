@@ -1,78 +1,54 @@
-import prisma from '../prisma.js';
+import { AppDataSource } from '../database.js';
 
 async function createPaymentCore(data, user) {
     try {
         const { leaseId, tenantId } = data;
-        const paymentData = data;
+        const paymentData = { ...data };
         const newLeasePaymentSchedule = paymentData.leasePaymentSchedule;
         delete paymentData.leasePaymentSchedule;
         delete paymentData.leaseId;
         delete paymentData.tenantId;
 
-        // Check if the submitter is the tenant or realtor
-        const lease = await prisma.lease.findUnique({
-            where: {
-                id: leaseId
-            },
-            include: {
-                realtor: true
-            }
+        const leaseRepo = AppDataSource.getRepository('Lease');
+        const paymentRepo = AppDataSource.getRepository('RentPayment');
+        const scheduleRepo = AppDataSource.getRepository('LeasePaymentSchedule');
+        
+        const lease = await leaseRepo.findOne({
+            where: { id: leaseId },
+            relations: { realtor: true }
         });
 
-        let approvalDate;
-
-        if (lease.realtor.userId === user.userId) {
+        let approvalDate = null;
+        if (lease && lease.realtor && lease.realtor.userId === user.userId) {
             approvalDate = new Date();
         }
 
-        const newPayment = await prisma.rentPayment.create({
-            data: {
-                ...paymentData,
-                submittedBy: user.userId,
-                submissionDate: new Date(),
-                approvalDate: approvalDate,
-                lease: {
-                    connect: {
-                        id: leaseId
-                    }
-                },
-                /*
-                tenant: {
-                    connect: {
-                        id: tenantId
-                    }
-                 */
-            }});
+        let newPayment = paymentRepo.create({
+            ...paymentData,
+            submittedBy: user.userId,
+            submissionDate: new Date(),
+            approvalDate: approvalDate,
+            leaseId: leaseId
+        });
+        
+        await paymentRepo.save(newPayment);
 
         if (newLeasePaymentSchedule) {
-            const paymentSchedule = await prisma.leasePaymentSchedule.findUnique({
-                where: {
-                    id: Number(newLeasePaymentSchedule.id),
-                },
-                include: {
-                    lease: {
-                        include: {
-                            realtor: true
-                        }
-                    }
-                }
+            const paymentSchedule = await scheduleRepo.findOne({
+                where: { id: Number(newLeasePaymentSchedule.id) },
+                relations: { lease: { realtor: true } }
             });
 
-            if (paymentSchedule.lease.realtor.userId !== user.userId) {
+            if (!paymentSchedule || !paymentSchedule.lease || !paymentSchedule.lease.realtor || paymentSchedule.lease.realtor.userId !== user.userId) {
                 return { status: 403, message: "Unauthorized to update payment" };
             }
 
-            const updatedSchedule = await prisma.leasePaymentSchedule.update({
-                where: {
-                    id: newLeasePaymentSchedule.id
-                },
-                data: {
-                    status: newLeasePaymentSchedule.status,
-                    amountDue: newLeasePaymentSchedule.amountDue
-                }
+            await scheduleRepo.update(newLeasePaymentSchedule.id, {
+                status: newLeasePaymentSchedule.status,
+                amountDue: newLeasePaymentSchedule.amountDue
             });
 
-            if (updatedSchedule && newPayment) {
+            if (newPayment) {
                 return { status: 200, data: newPayment };
             }
             else {
@@ -86,7 +62,6 @@ async function createPaymentCore(data, user) {
         console.log(error)
         return { status: 500, message: "Error creating payment" };
     }
-
 }
 
 export async function createPayment(req, res) {
@@ -102,20 +77,13 @@ export async function createPayment(req, res) {
 
 export async function getPayments(req, res) {
     try {
-        const payments = await prisma.rentPayment.findMany({
-            where: {
-                lease: {
-                    realtor: {
-                        userId: req.user.userId
-                    }
-                }
-            },
-            include: {
-                lease: true,
-                tenant: true
-            }
-        });
-
+        const paymentRepo = AppDataSource.getRepository('RentPayment');
+        const payments = await paymentRepo.createQueryBuilder('payment')
+            .leftJoinAndSelect('payment.lease', 'lease')
+            .leftJoinAndSelect('payment.tenant', 'tenant')
+            .leftJoin('lease.realtor', 'realtor')
+            .where('realtor.userId = :userId', { userId: req.user.userId })
+            .getMany();
 
         res.status(200).json({data: payments });
     }
@@ -130,33 +98,19 @@ export async function updatePayment(req, res) {
         const { id } = req.params;
         const paymentData = req.body;
 
-        const payment = await prisma.rentPayment.findUnique({
-            where: {
-                id: Number(id)
-            },
-            include: {
-                lease: {
-                    include: {
-                        realtor: true
-                    }
-                }
-            }
+        const paymentRepo = AppDataSource.getRepository('RentPayment');
+        const payment = await paymentRepo.findOne({
+            where: { id: Number(id) },
+            relations: { lease: { realtor: true } }
         });
 
-        // Make sure that either lease or submitter is user
-        if (Number(payment.submittedBy) !== req.user.userId && payment.lease.realtor.userId !== req.user.userId) {
+        if (!payment || (Number(payment.submittedBy) !== req.user.userId && (!payment.lease || !payment.lease.realtor || payment.lease.realtor.userId !== req.user.userId))) {
             res.status(403).json({ message: "Unauthorized to update payment" });
             return;
         }
 
-        const updatedPayment = await prisma.rentPayment.update({
-            where: {
-                id: Number(id)
-            },
-            data: {
-                ...paymentData
-            }
-        });
+        await paymentRepo.update(Number(id), paymentData);
+        const updatedPayment = await paymentRepo.findOne({ where: { id: Number(id) } });
 
         res.status(200).json({data: updatedPayment });
     }
@@ -170,30 +124,18 @@ export async function deletePayment(req, res) {
     try {
         const { id } = req.params;
 
-        const payment = await prisma.rentPayment.findUnique({
-            where: {
-                id: Number(id)
-            },
-            include: {
-                lease: {
-                    include: {
-                        realtor: true
-                    }
-                }
-            }
+        const paymentRepo = AppDataSource.getRepository('RentPayment');
+        const payment = await paymentRepo.findOne({
+            where: { id: Number(id) },
+            relations: { lease: { realtor: true } }
         });
 
-        // Make sure that either lease or submitter is user
-        if (Number(payment.submittedBy) !== req.user.userId && payment.lease.realtor.userId !== req.user.userId) {
+        if (!payment || (Number(payment.submittedBy) !== req.user.userId && (!payment.lease || !payment.lease.realtor || payment.lease.realtor.userId !== req.user.userId))) {
             res.status(403).json({ message: "Unauthorized to delete payment" });
             return;
         }
 
-        await prisma.rentPayment.delete({
-            where: {
-                id: Number(id)
-            }
-        });
+        await paymentRepo.delete(Number(id));
 
         res.status(200).json({ message: "Payment deleted" });
     }
@@ -208,33 +150,19 @@ export async function updatePaymentSchedule(req, res){
         const { id } = req.params;
         const paymentScheduleData = req.body;
 
-        const paymentSchedule = await prisma.leasePaymentSchedule.findUnique({
-            where: {
-                id: Number(id)
-            },
-            include: {
-                lease: {
-                    include: {
-                        realtor: true
-                    }
-                }
-            }
+        const scheduleRepo = AppDataSource.getRepository('LeasePaymentSchedule');
+        const paymentSchedule = await scheduleRepo.findOne({
+            where: { id: Number(id) },
+            relations: { lease: { realtor: true } }
         });
 
-        // Make sure that either lease or submitter is user
-        if (paymentSchedule.lease.realtor.userId !== req.user.userId) {
-            res.status(403).json({ message: "Unauthorized to update payment" });
+        if (!paymentSchedule || !paymentSchedule.lease || !paymentSchedule.lease.realtor || paymentSchedule.lease.realtor.userId !== req.user.userId) {
+            res.status(403).json({ message: "Unauthorized to update payment schedule" });
             return;
         }
 
-        const updatedPaymentSchedule = await prisma.leasePaymentSchedule.update({
-            where: {
-                id: Number(id)
-            },
-            data: {
-                ...paymentScheduleData
-            }
-        });
+        await scheduleRepo.update(Number(id), paymentScheduleData);
+        const updatedPaymentSchedule = await scheduleRepo.findOne({ where: { id: Number(id) } });
 
         res.status(200).json({data: updatedPaymentSchedule });
     }
@@ -248,30 +176,18 @@ export async function deletePaymentSchedule(req, res) {
     try {
         const { id } = req.params;
 
-        const paymentSchedule = await prisma.leasePaymentSchedule.findUnique({
-            where: {
-                id: Number(id)
-            },
-            include: {
-                lease: {
-                    include: {
-                        realtor: true
-                    }
-                }
-            }
+        const scheduleRepo = AppDataSource.getRepository('LeasePaymentSchedule');
+        const paymentSchedule = await scheduleRepo.findOne({
+            where: { id: Number(id) },
+            relations: { lease: { realtor: true } }
         });
 
-        // Make sure that either lease or submitter is user
-        if (paymentSchedule.lease.realtor.userId !== req.user.userId) {
-            res.status(403).json({ message: "Unauthorized to delete payment" });
+        if (!paymentSchedule || !paymentSchedule.lease || !paymentSchedule.lease.realtor || paymentSchedule.lease.realtor.userId !== req.user.userId) {
+            res.status(403).json({ message: "Unauthorized to delete payment schedule" });
             return;
         }
 
-        await prisma.leasePaymentSchedule.delete({
-            where: {
-                id: Number(id)
-            }
-        });
+        await scheduleRepo.delete(Number(id));
 
         res.status(200).json({ message: "Payment Schedule deleted" });
     }
@@ -281,20 +197,18 @@ export async function deletePaymentSchedule(req, res) {
     }
 }
 
-
-// TODO: PaymentSchedules don't have creator and dont necessarily have lease, so currently impossible to connect to user
 export async function updateManyPaymentSchedules(req, res) {
     try {
-        const updatedPaymentSchedules = await prisma.$transaction(req.body.map(paymentSchedule => {
-        return prisma.leasePaymentSchedule.update({
-                where: {
-                    id: paymentSchedule.id
-                },
-                data: {
-                    ...paymentSchedule
-                }
-            });
-        }))
+        const updatedPaymentSchedules = [];
+        await AppDataSource.transaction(async (manager) => {
+            for (const scheduleData of req.body) {
+                const id = scheduleData.id;
+                delete scheduleData.id;
+                await manager.update('LeasePaymentSchedule', id, scheduleData);
+                const s = await manager.findOne('LeasePaymentSchedule', { where: { id }});
+                updatedPaymentSchedules.push(s);
+            }
+        });
 
         res.status(200).json({data: updatedPaymentSchedules });
     }
@@ -306,13 +220,16 @@ export async function updateManyPaymentSchedules(req, res) {
 
 export async function deleteManyPaymentSchedules(req, res) {
     try {
-        const deletedPaymentSchedules = await prisma.$transaction(req.body.map(paymentSchedule => {
-            return prisma.leasePaymentSchedule.delete({
-                where: {
-                    id: paymentSchedule.id
+        const deletedPaymentSchedules = [];
+        await AppDataSource.transaction(async (manager) => {
+            for (const scheduleData of req.body) {
+                const s = await manager.findOne('LeasePaymentSchedule', { where: { id: scheduleData.id }});
+                if (s) {
+                    deletedPaymentSchedules.push(s);
+                    await manager.delete('LeasePaymentSchedule', scheduleData.id);
                 }
-            });
-        }))
+            }
+        });
 
         res.status(200).json({ data: deletedPaymentSchedules });
     }
@@ -322,15 +239,11 @@ export async function deleteManyPaymentSchedules(req, res) {
     }
 }
 
-
-
-
 export async function createManyPayments(req, res) {
     let successCount = 0;
     const newPayments =[]
 
     try {
-
         for (const payment of req.body) {
             const newPayment = await createPaymentCore(payment, req.user);
             if (newPayment.status === 200) {
@@ -349,16 +262,16 @@ export async function createManyPayments(req, res) {
 
 export async function updateManyPayments(req, res) {
     try {
-        const updatedPayments = await prisma.$transaction(req.body.map(payment => {
-            return prisma.rentPayment.update({
-                where: {
-                    id: payment.id
-                },
-                data: {
-                    ...payment
-                }
-            });
-        }))
+        const updatedPayments = [];
+        await AppDataSource.transaction(async (manager) => {
+            for (const paymentData of req.body) {
+                const id = paymentData.id;
+                delete paymentData.id;
+                await manager.update('RentPayment', id, paymentData);
+                const p = await manager.findOne('RentPayment', { where: { id }});
+                updatedPayments.push(p);
+            }
+        });
 
         res.status(200).json({data: updatedPayments });
     }
@@ -370,13 +283,16 @@ export async function updateManyPayments(req, res) {
 
 export async function deleteManyPayments(req, res) {
     try {
-        const deletedPayments = await prisma.$transaction(req.body.map(payment => {
-            return prisma.rentPayment.delete({
-                where: {
-                    id: payment.id
+        const deletedPayments = [];
+        await AppDataSource.transaction(async (manager) => {
+            for (const paymentData of req.body) {
+                const p = await manager.findOne('RentPayment', { where: { id: paymentData.id }});
+                if (p) {
+                    deletedPayments.push(p);
+                    await manager.delete('RentPayment', paymentData.id);
                 }
-            });
-        }))
+            }
+        });
 
         res.status(200).json({ data: deletedPayments });
     }

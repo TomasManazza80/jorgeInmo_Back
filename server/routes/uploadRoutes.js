@@ -1,6 +1,6 @@
 import express from "express";
 import multer from "multer";
-import { uploadImage } from "../controllers/uploadController.js";
+import { uploadImage, deleteImage } from "../controllers/uploadController.js";
 import { authenticateToken } from "../controllers/authController.js";
 
 const router = express.Router();
@@ -14,5 +14,6 @@ const upload = multer({
 
 // Protect route so only authenticated users (admins) can upload images
 router.post("/", authenticateToken, upload.single("image"), uploadImage);
+router.delete("/:fileId", authenticateToken, deleteImage);
 
 export default router;

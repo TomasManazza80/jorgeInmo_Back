@@ -32,3 +32,21 @@ export const uploadImage = async (req, res) => {
         res.status(500).json({ success: false, message: "Error al subir imagen", error: error.message });
     }
 };
+export const deleteImage = async (req, res) => {
+    try {
+        const { fileId } = req.params;
+        if (!fileId) {
+            return res.status(400).json({ success: false, message: "No se proporcionó el fileId" });
+        }
+
+        await imagekit.deleteFile(fileId);
+
+        res.status(200).json({
+            success: true,
+            message: "Imagen eliminada exitosamente"
+        });
+    } catch (error) {
+        console.error("Error al eliminar imagen de ImageKit:", error);
+        res.status(500).json({ success: false, message: "Error al eliminar imagen", error: error.message });
+    }
+};

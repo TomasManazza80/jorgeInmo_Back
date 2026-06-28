@@ -66,3 +66,59 @@ export async function deleteFromGvamax(propertyId) {
          console.error(`[GVAmax API] Error eliminando propiedad:`, error.response?.data || error.message);
     }
 }
+
+const API_URL = process.env.GVAMAX_API_URL || 'https://gvamax.ar/Api/v3';
+const ID = process.env.GVAMAX_ID;
+const TOKEN = process.env.GVAMAX_TOKEN;
+
+async function fetchGvamax(endpoint, method = 'GET', extraParams = {}) {
+    try {
+        const baseUrl = API_URL.endsWith('/') ? API_URL.slice(0, -1) : API_URL;
+        const finalEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+        
+        const url = new URL(`${baseUrl}${finalEndpoint}`);
+        
+        const params = {
+            id: ID,
+            token: TOKEN,
+            ...extraParams
+        };
+        
+        if (method === 'GET') {
+            Object.keys(params).forEach(key => url.searchParams.append(key, params[key]));
+        }
+
+        const options = {
+            method,
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        };
+
+        const response = await fetch(url, options);
+        if (!response.ok) {
+            throw new Error(`GVAmax API Error: ${response.status} ${response.statusText}`);
+        }
+        return await response.json();
+    } catch (error) {
+        console.error(`Error fetching from GVAmax [${endpoint}]:`, error);
+        throw error;
+    }
+}
+
+// Inmuebles
+export const getInmuebles = async (params) => fetchGvamax('/inmuebles', 'GET', params);
+export const getTiposInmuebles = async (params) => fetchGvamax('/buscador/Tipos', 'GET', params);
+export const getFullLocation = async (params) => fetchGvamax('/buscador/FullLocation', 'GET', params);
+export const getBarrios = async (params) => fetchGvamax('/Buscador/Barrios', 'GET', params);
+export const getLocalidades = async (params) => fetchGvamax('/Buscador/Localidades', 'GET', params);
+export const getProvincias = async (params) => fetchGvamax('/Buscador/Provincias', 'GET', params);
+export const getZonas = async (params) => fetchGvamax('/Zonas/', 'GET', params);
+export const getLimitesZona = async (params) => fetchGvamax('/Zonas/Limites', 'GET', params);
+export const getEmprendimientos = async (params) => fetchGvamax('/empendimientos', 'GET', params);
+export const getCrmList = async (params) => fetchGvamax('/CRM/list/', 'GET', params);
+export const getCrmUsuarios = async (params) => fetchGvamax('/CRM/usuarios/', 'GET', params);
+export const getCrmCarpetas = async (params) => fetchGvamax('/CRM/carpetas/', 'GET', params);
+export const getCrmGrupos = async (params) => fetchGvamax('/CRM/grupos/', 'GET', params);
+export const getCrmCiclos = async (params) => fetchGvamax('/CRM/ciclos/', 'GET', params);
+export const addCrmLead = async (params) => fetchGvamax('/crm/addlead', 'GET', params);

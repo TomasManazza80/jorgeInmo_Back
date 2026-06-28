@@ -1,0 +1,47 @@
+import { EntitySchema } from 'typeorm';
+import * as enums from './enums.js';
+
+export const UserSchema = new EntitySchema({
+  name: 'User',
+  tableName: 'user',
+  columns: {
+    id: { primary: true, type: 'int', generated: true },
+    createdAt: { name: 'created_at', type: 'timestamptz', createDate: true },
+    updatedAt: { name: 'updated_at', type: 'timestamptz', updateDate: true },
+    email: { type: 'varchar', unique: true, nullable: true },
+    firstName: { name: 'first_name', type: 'varchar', nullable: true },
+    lastName: { name: 'last_name', type: 'varchar', nullable: true },
+    name: { type: 'varchar', nullable: true },
+    dob: { type: 'timestamp', nullable: true },
+    currencyCode: { name: 'currency_code', type: 'varchar', default: 'USD', nullable: true },
+    password: { type: 'varchar', nullable: true },
+    salt: { type: 'varchar', nullable: true },
+    plaidLinkToken: { name: 'plaid_link_token', type: 'varchar', nullable: true },
+    title: { type: 'varchar', nullable: true },
+    avatar: { type: 'varchar', nullable: true },
+    phone: { type: 'varchar', nullable: true },
+    website: { type: 'varchar', nullable: true },
+    company: { type: 'varchar', nullable: true },
+    bio: { type: 'text', nullable: true },
+    status: { type: 'enum', enum: enums.AccountStatus, default: 'OFFLINE' },
+    role: { type: 'enum', enum: enums.UserRole, default: 'REALTOR', nullable: true },
+    street: { type: 'varchar', nullable: true },
+    city: { type: 'varchar', nullable: true },
+    state: { type: 'varchar', nullable: true },
+    zip: { type: 'varchar', nullable: true },
+    country: { type: 'varchar', nullable: true },
+    civilStatus: { name: 'civil_status', type: 'enum', enum: enums.CivilStatus, nullable: true },
+    occupation: { type: 'varchar', nullable: true },
+    income: { type: 'float', nullable: true },
+    creditScore: { name: 'credit_score', type: 'int', nullable: true },
+  },
+  relations: {
+    tokens: { target: 'Token', type: 'one-to-many', inverseSide: 'user' },
+    documents: { target: 'Document', type: 'one-to-many', inverseSide: 'user' },
+    images: { target: 'Image', type: 'one-to-many', inverseSide: 'user' },
+    sentMessages: { target: 'Message', type: 'one-to-many', inverseSide: 'sender' },
+    receivedMessages: { target: 'Message', type: 'one-to-many', inverseSide: 'receiver' },
+    realtor: { target: 'Realtor', type: 'one-to-one', inverseSide: 'user' },
+    tenant: { target: 'Tenant', type: 'one-to-one', inverseSide: 'user' },
+  }
+});

@@ -1,12 +1,10 @@
 import bcrypt from 'bcryptjs';
-import prisma from '../prisma.js';
+import { AppDataSource } from '../database.js';
 import jwt from 'jsonwebtoken';
 
 import dotenv from 'dotenv';
 
 dotenv.config();
-
-
 
 import * as userService from '../services/userService.js';
 
@@ -28,7 +26,7 @@ export async function registerUser(req, res) {
         res.status(201).json({message: 'User created successfully', user: newUser});
     }
     catch (error) {
-        if (error.code === 'P2002') {
+        if (error.code === '23505') { // Postgres unique violation code
             res.status(409).json({message: 'User with that email already exists'});
         }
         else {
@@ -42,10 +40,9 @@ export async function login(req, res) {
     const { email, password } = req.body;
 
     try {
-        const user = await prisma.user.findUnique({
-            where: {
-                email: email,
-            },
+        const userRepo = AppDataSource.getRepository('User');
+        const user = await userRepo.findOne({
+            where: { email: email },
         });
 
         if (!user || !await bcrypt.compare(password, user.password)) {
@@ -77,10 +74,9 @@ export async function refresh(req, res) {
         const payload = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
 
         // Check if the user exists
-        const user = await prisma.user.findUnique({
-            where: {
-                id: payload.userId,
-            },
+        const userRepo = AppDataSource.getRepository('User');
+        const user = await userRepo.findOne({
+            where: { id: payload.userId },
         });
 
         if (!user) {

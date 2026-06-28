@@ -1,41 +1,22 @@
-import prisma from '../prisma.js';
+import { AppDataSource } from '../database.js';
 
 export async function createDocument(req, res) {
     try {
         const {documentType, documentName, documentUrl, realEstateObjectId, leaseId} = req.body;
-
         const userId = req.user.userId;
 
-        let data = {
+        const documentRepo = AppDataSource.getRepository('Document');
+
+        let newDocument = documentRepo.create({
             documentType: documentType,
             documentName: documentName,
             documentUrl: documentUrl,
-            user: {
-                connect: {
-                    id: userId,
-                }
-            },
-            // Conditionally add fields if they exist
-            ...(realEstateObjectId && {
-                realEstateObject: {
-                    connect: {
-                        id: realEstateObjectId,
-                    }
-                }
-            }),
-            ...(leaseId && {
-                lease: {
-                    connect: {
-                        id: leaseId,
-                    }
-                }
-            })
-        };
+            userId: userId,
+            realEstateObjectId: realEstateObjectId || null,
+            leaseId: leaseId || null
+        });
 
-        const newDocument = await prisma.document.create({
-            data: data,
-        })
-
+        await documentRepo.save(newDocument);
 
         res.status(200).json({data: newDocument });
     }
@@ -47,17 +28,11 @@ export async function createDocument(req, res) {
 export async function setCurrency(req, res) {
     try {
         const {currency} = req.body;
-
         const userId = req.user.userId;
 
-        const updatedUser = await prisma.user.update({
-            where: {
-                id: userId,
-            },
-            data: {
-                currencyCode: currency,
-            },
-        });
+        const userRepo = AppDataSource.getRepository('User');
+        await userRepo.update(userId, { currencyCode: currency });
+        const updatedUser = await userRepo.findOne({ where: { id: userId } });
 
         res.status(200).json({data: updatedUser });
     }
@@ -70,36 +45,18 @@ export async function setCurrency(req, res) {
 export async function createImage(req, res) {
     try {
         const {imageUrl, realEstateObjectId, leaseId} = req.body;
-
         const userId = req.user.userId;
 
-        let data = {
-            imageUrl: imageUrl,
-            user: {
-                connect: {
-                    id: userId,
-                }
-            },
-            // Conditionally add fields if they exist
-            ...(realEstateObjectId && {
-                realEstateObject: {
-                    connect: {
-                        id: realEstateObjectId,
-                    }
-                }
-            }),
-            ...(leaseId && {
-                lease: {
-                    connect: {
-                        id: leaseId,
-                    }
-                }
-            })
-        };
+        const imageRepo = AppDataSource.getRepository('Image');
 
-        const newImage = await prisma.image.create({
-            data: data,
-        })
+        let newImage = imageRepo.create({
+            imageUrl: imageUrl,
+            userId: userId,
+            realEstateObjectId: realEstateObjectId || null,
+            leaseId: leaseId || null
+        });
+
+        await imageRepo.save(newImage);
 
         res.status(200).json({data: newImage });
     }

@@ -1,5 +1,4 @@
-import prisma from '../prisma.js';
-
+import { AppDataSource } from '../database.js';
 
 function calculatePaymentDates(startDate, endDate, paymentFrequency) {
     if (!startDate || !endDate || !paymentFrequency) {
@@ -45,63 +44,49 @@ export async function createLeaseWithPaymentSchedule(leaseData, userId) {
         );
     }
 
+    const data = {...leaseData};
+    const tenantId = data.tenantId;
+    const unitId = data.unitId;
+    delete data.tenantId;
+    delete data.unitId;
 
-  const data = {...leaseData};
+    let lease = null;
+    const leaseRepo = AppDataSource.getRepository('Lease');
+    const paymentScheduleRepo = AppDataSource.getRepository('LeasePaymentSchedule');
+    const realtorRepo = AppDataSource.getRepository('Realtor');
 
-  delete data.unitId;
-  delete data.tenantId;
+    const realtor = await realtorRepo.findOne({ where: { userId } });
 
-  let lease, paymentSchedules;
-  try {
-      lease = await prisma.lease.create({
-          data: {
-              ...data,
-              tenant: {
-                  connect: {
-                      id: leaseData.tenantId,
-                  },
-              },
-              unit: {
-                  connect: {
-                      id: leaseData.unitId,
-                  },
-              },
-              realtor: {
-                  connect: {
-                      userId: userId,
-                  },
-              },
-          },
-      });
-  } catch (error) {
+    try {
+        lease = leaseRepo.create({
+            ...data,
+            tenantId,
+            unitId,
+            realtorId: realtor.id
+        });
+        await leaseRepo.save(lease);
+    } catch (error) {
         console.log("failed to create lease", error);
-  }
+        throw error;
+    }
 
-
-  try {
-    paymentSchedules = await prisma.leasePaymentSchedule.createMany({
-      data: paymentDates.map((date) => ({
-        dueDate: date,
-        amountDue: leaseData.rentalPrice,
-        leaseId: lease.id,
-      })),
-    });
-  }
-    catch (error) {
+    try {
+        const schedules = paymentDates.map((date) => paymentScheduleRepo.create({
+            dueDate: date,
+            amountDue: leaseData.rentalPrice,
+            leaseId: lease.id,
+        }));
+        if (schedules.length > 0) {
+            await paymentScheduleRepo.save(schedules);
+        }
+    } catch (error) {
         console.log("failed to add payment schedules", error);
     }
 
-    const updatedLease = await prisma.lease.findUnique({
-        where: {
-        id: lease.id,
-        },
-        include: {
-        tenant: true,
-        unit: true,
-        paymentSchedule: true,
-        },
+    const updatedLease = await leaseRepo.findOne({
+        where: { id: lease.id },
+        relations: ['tenant', 'unit', 'paymentSchedule'],
     });
 
-
-  return updatedLease;
+    return updatedLease;
 }
