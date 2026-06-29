@@ -26,6 +26,9 @@ import { SiteSettingsSchema } from './entities/SiteSettings.js';
 export const AppDataSource = new DataSource({
   type: 'postgres',
   url: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false
+  },
   synchronize: true, // Use synchronize for development, similar to prisma db push
   logging: false,
   entities: [
