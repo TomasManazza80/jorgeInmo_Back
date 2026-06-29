@@ -30,7 +30,11 @@ const PORT = process.env.PORT || 3000;
 
 const app = express();
 const router = express.Router();
-app.use(cors({ origin: process.env.NODE_ENV === 'production' ? process.env.VITE_PUBLIC_URL : ['http://localhost:5173', process.env.VITE_PUBLIC_URL], credentials: true }));
+const allowedOrigins = process.env.NODE_ENV === 'production' 
+    ? [process.env.VITE_PUBLIC_URL, process.env.VITE_PUBLIC_URL?.replace(/\/$/, '')] 
+    : ['http://localhost:5173', process.env.VITE_PUBLIC_URL, process.env.VITE_PUBLIC_URL?.replace(/\/$/, '')];
+
+app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(express.json());
 app.use(router);
 
@@ -155,7 +159,7 @@ app.use((err, req, res, next) => {
 const server = createServer(app );
 const io = new Server(server, {
     cors: {
-        origin: process.env.NODE_ENV === 'production' ? process.env.VITE_PUBLIC_URL : ['http://localhost:5173', process.env.VITE_PUBLIC_URL],
+        origin: allowedOrigins,
         methods: ["GET", "POST"],
         credentials: true
     }
