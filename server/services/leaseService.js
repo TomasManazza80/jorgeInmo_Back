@@ -62,7 +62,7 @@ export async function createLeaseWithPaymentSchedule(leaseData, userId) {
             ...data,
             tenantId,
             unitId,
-            realtorId: realtor.id
+            realtorId: realtor ? realtor.id : null
         });
         await leaseRepo.save(lease);
     } catch (error) {
@@ -85,7 +85,7 @@ export async function createLeaseWithPaymentSchedule(leaseData, userId) {
 
     const updatedLease = await leaseRepo.findOne({
         where: { id: lease.id },
-        relations: ['tenant', 'unit', 'paymentSchedule'],
+        relations: { tenant: true, unit: true, paymentSchedule: true },
     });
 
     return updatedLease;

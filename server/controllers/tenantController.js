@@ -61,10 +61,21 @@ export async function createTenant(req, res) {
             tenantData.userId = user.id;
         }
 
-        newTenant = tenantRepo.create({
-            ...tenantData
-        });
-        await tenantRepo.save(newTenant);
+        if (user) {
+            newTenant = await tenantRepo.findOne({ where: { userId: user.id } });
+        }
+
+        if (newTenant) {
+            // Actualizar el inquilino existente
+            Object.assign(newTenant, tenantData);
+            await tenantRepo.save(newTenant);
+        } else {
+            // Crear uno nuevo
+            newTenant = tenantRepo.create({
+                ...tenantData
+            });
+            await tenantRepo.save(newTenant);
+        }
 
         if (unitId) {
             await unitRepo.update(parseInt(unitId), { tenantId: newTenant.id });

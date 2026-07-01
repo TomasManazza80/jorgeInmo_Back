@@ -92,6 +92,7 @@ router.post('/currency', authenticateToken, miscController.setCurrency)
 router.get('/properties', authenticateToken, realEstateController.getProperties)
 router.post('/properties', authenticateToken, realEstateController.createProperty)
 router.get('/properties/:id', authenticateToken, realEstateController.getProperty)
+router.patch('/properties/:id', authenticateToken, realEstateController.updateProperty)
 router.delete('/properties/:id', authenticateToken, realEstateController.deleteProperty)
 router.post('/properties/:id/upload-3d', authenticateToken, realEstateController.upload3dModel)
 

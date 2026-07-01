@@ -18,7 +18,15 @@ export const getHeroSettings = async (req, res) => {
                 heroRatingText: "Altamente Recomendado - 3.9 / 28 Opiniones",
                 heroRatingStars: 4
             });
-            await settingsRepo.save(settings);
+            try {
+                await settingsRepo.save(settings);
+            } catch (e) {
+                if (e.code === '23505') {
+                    settings = await settingsRepo.findOne({ where: { id: 1 } });
+                } else {
+                    throw e;
+                }
+            }
         }
         
         return res.status(200).json({ success: true, data: settings });

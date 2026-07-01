@@ -20,7 +20,7 @@ export const LeaseSchema = new EntitySchema({
     rentPaid: { name: 'rent_paid', type: 'float', nullable: true },
     tenantId: { name: 'tenant_id', type: 'int', nullable: true },
     unitId: { name: 'unit_id', type: 'int', nullable: true },
-    realtorId: { name: 'realtor_id', type: 'int' },
+    realtorId: { name: 'realtor_id', type: 'int', nullable: true },
   },
   relations: {
     documents: { target: 'Document', type: 'one-to-many', inverseSide: 'lease' },
