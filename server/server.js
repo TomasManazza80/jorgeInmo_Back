@@ -12,6 +12,7 @@ import * as realEstateController from "./controllers/realEstateController.js";
 import * as leaseController from "./controllers/leaseController.js";
 import * as tenantController from "./controllers/tenantController.js";
 import {checkOverduePayments} from "./jobs/overduePayments.js";
+import { runGvamaxImport } from "./jobs/gvamaxImport.js";
 import * as paymentController from "./controllers/paymentController.js";
 import jwt from "jsonwebtoken";
 import {createMessage} from "./controllers/messageController.js";
@@ -23,6 +24,10 @@ import settingsRoutes from "./routes/settingsRoutes.js";
 import uploadRoutes from "./routes/uploadRoutes.js";
 import webhookRoutes from "./routes/webhookRoutes.js";
 import gvamaxRoutes from "./routes/gvamaxRoutes.js";
+import trackingRoutes from "./routes/trackingRoutes.js";
+import salesRoutes from "./routes/salesRoutes.js";
+import offerRoutes from "./routes/offerRoutes.js";
+import usdRoutes from "./routes/usdRoutes.js";
 import { requireRoles } from "./util/roleMiddleware.js";
 
 // eslint-disable-next-line no-undef
@@ -62,6 +67,16 @@ app.use('/api/webhooks', webhookRoutes);
 
 // GVAmax API Integration
 app.use('/api/gvamax', gvamaxRoutes);
+
+// Tracking / Leads
+app.use('/api/tracking', trackingRoutes);
+
+// Sales & Offers
+app.use('/api/sales', salesRoutes);
+app.use('/api/offers', offerRoutes);
+
+// USD
+app.use('/api/usd', usdRoutes);
 
 // Auth
 router.post('/signup', authController.registerUser);
@@ -149,6 +164,8 @@ router.delete('/bulk/payments', authenticateToken, paymentController.deleteManyP
 //Jobs
 //      Schedule the job to run daily at 00:00 (midnight)
 cron.schedule('0 0 * * *', checkOverduePayments);
+// Sincronización con GVA Max cada 15 minutos para mantener los datos frescos sin afectar el rendimiento
+cron.schedule('*/15 * * * *', runGvamaxImport);
 
 
 app.use((err, req, res, next) => {

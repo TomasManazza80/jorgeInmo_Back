@@ -8,6 +8,11 @@ import { RealtorSchema } from './entities/Realtor.js';
 import { TenantSchema } from './entities/Tenant.js';
 import { TokenSchema } from './entities/Token.js';
 import { RealEstateObjectSchema } from './entities/RealEstateObject.js';
+import { ClientSchema } from './entities/Client.js';
+import { UsdClientSchema } from './entities/UsdClient.js';
+import { DealSchema } from './entities/Deal.js';
+import { OfferSchema } from './entities/Offer.js';
+import { UsdTransactionSchema } from './entities/UsdTransaction.js';
 import { UnitSchema } from './entities/Unit.js';
 import { AmenitySchema } from './entities/Amenity.js';
 import { AmenitiesOnRealEstateSchema } from './entities/AmenitiesOnRealEstate.js';
@@ -22,6 +27,8 @@ import { MessageSchema } from './entities/Message.js';
 import { ExpenseSchema } from './entities/Expense.js';
 import { MaintenanceRequestSchema } from './entities/MaintenanceRequest.js';
 import { SiteSettingsSchema } from './entities/SiteSettings.js';
+import { VisitorSchema } from './entities/Visitor.js';
+import { PropertyActivitySchema } from './entities/PropertyActivity.js';
 
 export const AppDataSource = new DataSource({
   type: 'postgres',
@@ -53,7 +60,14 @@ export const AppDataSource = new DataSource({
     MessageSchema,
     ExpenseSchema,
     MaintenanceRequestSchema,
-    SiteSettingsSchema
+    SiteSettingsSchema,
+    VisitorSchema,
+    PropertyActivitySchema,
+    ClientSchema,
+    UsdClientSchema,
+    DealSchema,
+    OfferSchema,
+    UsdTransactionSchema
   ],
   subscribers: [],
   migrations: [],

@@ -12,6 +12,7 @@ export async function getProperties(req, res) {
         const properties = await propertyRepo.createQueryBuilder('property')
             .leftJoinAndSelect('property.units', 'unit')
             .leftJoinAndSelect('property.images', 'image')
+            .leftJoinAndSelect('property.owner', 'owner')
             .leftJoin('property.realtor', 'realtor')
             .where('realtor.userId = :userId', { userId: req.user.userId })
             .orderBy('property.createdAt', 'DESC')
@@ -124,7 +125,7 @@ export async function getProperty(req, res) {
         const propertyRepo = AppDataSource.getRepository('RealEstateObject');
         const property = await propertyRepo.findOne({
             where: { id: parseInt(req.params.id) },
-            relations: { units: true, images: true }
+            relations: { units: true, images: true, owner: true }
         });
         if (!property) return res.status(404).json({ message: "Property not found" });
         res.status(200).json({data: property });
@@ -217,7 +218,7 @@ export async function getPublicProperties(req, res) {
         const propertyRepo = AppDataSource.getRepository('RealEstateObject');
         const properties = await propertyRepo.find({
             order: { createdAt: "DESC" },
-            relations: { units: true, images: true }
+            relations: { units: true, images: true, owner: true }
         });
         res.status(200).json({data: properties });
     }
@@ -234,6 +235,7 @@ export async function getPublicProperty(req, res) {
             relations: {
                 units: true,
                 images: true,
+                owner: true,
                 amenities: {
                     amenity: true
                 }

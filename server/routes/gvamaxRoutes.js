@@ -19,7 +19,7 @@ router.get('/emprendimientos', gvamaxController.getEmprendimientos);
 // --- Rutas Privadas (CRM) ---
 // Requieren estar autenticado, y puedes restringirlo por roles si lo deseas. 
 // Aquí lo dejo accesible para roles ADMIN y REALTOR.
-const crmRoles = requireRoles(['ADMIN', 'REALTOR']);
+const crmRoles = requireRoles(['ADMIN', 'REALTOR', 'USER']);
 
 router.get('/crm/list', authenticateToken, crmRoles, gvamaxController.getCrmList);
 router.get('/crm/usuarios', authenticateToken, crmRoles, gvamaxController.getCrmUsuarios);
@@ -28,4 +28,5 @@ router.get('/crm/grupos', authenticateToken, crmRoles, gvamaxController.getCrmGr
 router.get('/crm/ciclos', authenticateToken, crmRoles, gvamaxController.getCrmCiclos);
 router.get('/crm/addlead', authenticateToken, gvamaxController.addCrmLead); // Quizás cualquier usuario autenticado puede agregar un lead (o puedes restringirlo)
 
+router.post('/crm/import', authenticateToken, crmRoles, gvamaxController.runImport);
 export default router;

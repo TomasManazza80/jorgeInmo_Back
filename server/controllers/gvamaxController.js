@@ -134,3 +134,12 @@ export const addCrmLead = async (req, res) => {
         res.status(500).json({ message: "Error adding CRM lead to GVAmax", error: error.message });
     }
 };
+
+export const runImport = async (req, res) => {
+    try {
+        const result = await gvamaxService.syncGvamaxToLocal(req.user.userId);
+        res.status(200).json({ message: "Import successful", result });
+    } catch (error) {
+        res.status(500).json({ message: "Error during GVAmax import", error: error.message });
+    }
+};

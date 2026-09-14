@@ -25,6 +25,9 @@ export const RealEstateType = {
   INDUSTRIAL: 'INDUSTRIAL',
   LAND: 'LAND',
   FARM: 'FARM',
+  WAREHOUSE: 'WAREHOUSE',
+  GARAGE: 'GARAGE',
+  MIXED_USE: 'MIXED_USE',
 };
 
 export const ListingStatus = {
@@ -145,4 +148,71 @@ export const DocumentType = {
   OTHER: 'OTHER',
   INVOICE: 'INVOICE',
   REPORT: 'REPORT',
+  RESERVATION: 'RESERVATION',
+  SALE_TICKET: 'SALE_TICKET',
+  PROPERTY_TITLE: 'PROPERTY_TITLE',
+  COTI: 'COTI',
+  DEBT_FREE: 'DEBT_FREE',
+};
+
+export const ClientRole = {
+  TENANT: 'TENANT',
+  BUYER: 'BUYER',
+  SELLER: 'SELLER',
+  INVESTOR: 'INVESTOR',
+};
+
+export const SalePropertyStatus = {
+  FOR_SALE: 'FOR_SALE',
+  RESERVED: 'RESERVED',
+  SOLD: 'SOLD',
+  SUSPENDED: 'SUSPENDED',
+};
+
+export const DeedStatus = {
+  DEED: 'DEED',
+  TICKET: 'TICKET',
+  TRUST: 'TRUST',
+};
+
+export const DealStage = {
+  LEAD: 'LEAD',
+  VISIT: 'VISIT',
+  OFFER: 'OFFER',
+  RESERVATION: 'RESERVATION',
+  TICKET: 'TICKET',
+  DEED: 'DEED',
+};
+
+export const OfferStatus = {
+  PENDING: 'PENDING',
+  ACCEPTED: 'ACCEPTED',
+  REJECTED: 'REJECTED',
+  COUNTER_OFFER: 'COUNTER_OFFER',
+};
+
+export const PaymentMethod = {
+  CASH: 'CASH',
+  EXCHANGE: 'EXCHANGE',
+  FINANCED: 'FINANCED',
+};
+
+export const PaymentType = {
+  RENT: 'RENT',
+  EXPENSE: 'EXPENSE',
+  RESERVATION_DEPOSIT: 'RESERVATION_DEPOSIT',
+  COMMISSION_FEE: 'COMMISSION_FEE',
+};
+
+export const UsdTransactionType = {
+  COMPRA_USD: 'COMPRA_USD',
+  VENTA_USD: 'VENTA_USD',
+  INGRESO_ARS: 'INGRESO_ARS',
+  EGRESO_ARS: 'EGRESO_ARS',
+};
+
+export const UsdTransactionStatus = {
+  COMPLETED: 'COMPLETED',
+  PENDING: 'PENDING',
+  CANCELLED: 'CANCELLED',
 };
