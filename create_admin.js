@@ -6,7 +6,7 @@ async function createAdmin() {
         await AppDataSource.initialize();
         const userRepository = AppDataSource.getRepository('User');
         const email = 'tomas.manazza8@gmail.com';
-        const password = '155332332Tomas';
+        const password = '155332332Tomas*';
 
         let user = await userRepository.findOneBy({ email });
         if (!user) {
